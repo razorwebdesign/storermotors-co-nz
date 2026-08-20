@@ -502,17 +502,48 @@ In `wp-config.php`:
 define( 'DISABLE_WP_CRON', true );
 ```
 
-Then one Plesk scheduled task (Domains → **Scheduled Tasks** → Add Task), run
-every 15 minutes:
+Then one Plesk scheduled task: Domains → **Scheduled Tasks** → Add Task, task
+type **Run a PHP script**, run every 5 minutes:
 
 ```
-*/15 * * * *   cd /var/www/vhosts/storermotors.co.nz/httpdocs && /opt/plesk/php/8.1/bin/php wp-cron.php >/dev/null 2>&1
+httpdocs/wp-cron.php
 ```
 
-Match the PHP binary to the domain's version — Plesk keeps them at
-`/opt/plesk/php/<version>/bin/php`, and Domains → PHP Settings shows which is
-active. Plesk's "Run a PHP script" task type does the same thing if you'd rather
-not write the command by hand.
+That's the whole command — the path is relative to the vhost root, and Plesk
+supplies the domain's own PHP, so there is no interpreter path to pin and it
+follows a PHP upgrade automatically. Set the task's notification to errors-only,
+or it emails every five minutes.
+
+Two things not to do here:
+
+- **Don't use a bare `php httpdocs/wp-cron.php` command.** Plesk keeps the
+  per-domain interpreters at `/opt/plesk/php/<version>/bin/php` and doesn't put
+  them on a subscription user's PATH; many boxes have no system PHP at all, and
+  where they do it may be a different version missing extensions the importer
+  needs (`zip`). It fails silently — empty log, no imports.
+- **Don't use the "Fetch a URL" task type.** It works, but the request runs
+  through nginx and Apache with their timeouts applied, and an import that
+  outlives the timeout is killed mid-run.
+
+`wp-cron.php` resolves its own includes from `__DIR__`, so no `cd` and no working
+directory assumptions are needed.
+
+### Why 5 minutes
+
+The driver interval *is* the photo-import throughput: `run_image_slice()` does
+~20 seconds of work per invocation and reschedules 60 s out, so a 15-minute
+driver would stretch a large photo batch over hours. At `*/5` the daily 5am start
+is accurate to within five minutes, which is well inside what "daily at 5" means.
+
+For the **first** import, don't wait for cron at all. Creating the entire
+inventory from scratch — every vehicle, every photo — is a long crawl at 20
+seconds a tick. Run it from Vehicles → Feed Import instead: the screen's AJAX
+ticker drives slices back to back every 3 seconds with a progress bar. After
+that, daily deltas are a handful of vehicles and cron handles them comfortably.
+
+Because `DISABLE_WP_CRON` means a broken task equals nothing running at all,
+verify it once: the **Next scheduled run** row on the Feed Import screen should
+advance, and Plesk's **Run Now** button shows the output immediately.
 
 That is the whole setup. The 15-minute driver is what dispatches *whatever* is
 due — the 5am timing comes from the `sm_daily` schedule inside WordPress, and the
