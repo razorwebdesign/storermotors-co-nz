@@ -44,10 +44,13 @@ wp-content/mu-plugins/
     ├── class-sm-import-parser.php     SML.XML → normalised vehicle data
     ├── class-sm-import-vehicles.php   upsert + reconcile the `vehicle` CPT
     ├── class-sm-import-media.php      photo sideloading, sliced across cron
-    ├── class-sm-import-ftp.php        FTP/FTPS transport
+    ├── class-sm-import-local.php      local drop-folder pickup (the live source)
+    ├── class-sm-import-ftp.php        FTP/FTPS pull (the alternative source)
     ├── class-sm-import-runner.php     orchestration, locking, cron wiring
     └── class-sm-import-admin.php      settings screen under Vehicles
 ```
+
+`docs/` holds the longer-form guides — start at [`docs/README.md`](docs/README.md).
 
 `reference/` holds the original static HTML mockups (`*-build.html`) and their
 approved checkpoints (`*-checkpoint.html`) used to build the block templates.
@@ -88,6 +91,9 @@ growing the big file.
 ## The vehicle feed importer
 
 Pulls the Motorcentral/SML package over FTP and syncs it into the `vehicle` CPT.
+**Full guide: [`docs/vehicle-feed-import.md`](docs/vehicle-feed-import.md)** —
+FTP setup, field mapping, photo sync, reconciliation guards, settings and
+troubleshooting. The summary below is orientation only.
 
 Pipeline, deliberately fail-closed and in this order:
 
@@ -104,18 +110,26 @@ Feed shape: an outer ZIP containing `SML.XML` (vehicle data), `SML-NN-Data.ZIP`
 Both archives must be flat — any entry name with a path separator is treated as
 hostile and aborts the run.
 
-- **FTP credentials come from `wp-config.php` constants**: `SM_FEED_FTP_HOST`,
-  `SM_FEED_FTP_USER`, `SM_FEED_FTP_PASS`, `SM_FEED_FTP_PATH`,
-  `SM_FEED_FTP_SCHEME`. Constants win over the `sm_vehicle_import_settings`
-  option, so the password never reaches the database or a SQL dump. Keep it that
-  way — don't add a code path that persists the password to options.
+- **The live source is a local drop folder**, not an FTP pull: Motorcentral
+  uploads into `orion_sync` (a sibling of `httpdocs` on the Plesk box) over their
+  own restricted FTP account, and `SM_Import_Local` reads it off disk. Configured
+  with one constant, `SM_FEED_LOCAL_PATH`. A configured drop folder wins over
+  every FTP setting.
+- `SM_Import_FTP` remains for pulling from a remote server. Its credentials come
+  from `wp-config.php` constants (`SM_FEED_FTP_HOST`, `_USER`, `_PASS`, `_PATH`,
+  `_SCHEME`), which win over the `sm_vehicle_import_settings` option so the
+  password never reaches the database or a SQL dump. Keep it that way — don't add
+  a code path that persists a password to options.
 - Cron: custom schedules `sm_every_15min` / `sm_hourly` (default) /
-  `sm_twice_daily`; hooks `sm_vehicle_import_check`,
+  `sm_twice_daily` / `sm_daily` (anchored on `SM_Import_Runner::DAILY_HOUR`, 5am
+  local, re-anchored after each run so DST can't drift it); hooks
+  `sm_vehicle_import_check`,
   `sm_vehicle_import_process_images` (image sideloading is sliced across
   single events to stay inside PHP limits), `sm_vehicle_import_gc`.
 - A run holds the `sm_vehicle_import_lock` option, timing out after 30 min.
   `sm_vehicle_import_last_fingerprint` skips an unchanged feed.
-- Admin screen: **Vehicles → Vehicle Import** (`edit.php?post_type=vehicle&page=sm-vehicle-import`).
+- Admin screen: **Vehicles → Feed Import** (`edit.php?post_type=vehicle&page=sm-vehicle-import`),
+  `manage_options` only.
 - Staging and logs live under `wp-content/uploads/sm-vehicle-import/`
   (gitignored).
 - `class-sm-import-parser.php` is the single source of truth for every value
@@ -137,7 +151,11 @@ hostile and aborts the run.
 
 ## Environment
 
-- PHP 8.1 on cPanel/Apache (`.htaccess` carries the cPanel handler block).
+- **Production is Plesk**, document root `httpdocs`, with nginx in front of
+  Apache — so `.htaccess` deny rules do not necessarily apply to static files.
+  Vhost layout: `/var/www/vhosts/storermotors.co.nz/{httpdocs,orion_sync}`.
+- The `.htaccess` in this tree carries a cPanel-generated `ea-php81` handler
+  block, left over from a cPanel host. It is inert on Plesk.
 - Plugins in use: Contact Form 7 + Flamingo (form storage), WP Mail SMTP,
   All in One SEO, Safe SVG, WPCode/insert-headers-and-footers, Akismet.
   All third-party and gitignored — update them through the admin, not git.

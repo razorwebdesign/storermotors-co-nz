@@ -99,7 +99,7 @@ final class SM_Import_Admin {
         $notice = 'ran';
 
         if ($action === 'test') {
-            $test = SM_Import_FTP::test();
+            $test = SM_Import_Local::configured() ? SM_Import_Local::test() : SM_Import_FTP::test();
             set_transient('sm_vehicle_import_test', is_wp_error($test) ? ['error' => $test->get_error_message()] : $test, 120);
             $notice = 'tested';
         } elseif ($action === 'reconcile') {
@@ -132,12 +132,14 @@ final class SM_Import_Admin {
         $in = wp_unslash($_POST);
 
         SM_Import_Settings::update([
+            'local_path'         => sanitize_text_field($in['local_path'] ?? ''),
+            'require_sentinel'   => !empty($in['require_sentinel']),
             'ftp_host'           => sanitize_text_field($in['ftp_host'] ?? ''),
             'ftp_user'           => sanitize_text_field($in['ftp_user'] ?? ''),
             'ftp_pass'           => (string) ($in['ftp_pass'] ?? ''),
             'ftp_path'           => sanitize_text_field($in['ftp_path'] ?? '/'),
             'ftp_scheme'         => in_array($in['ftp_scheme'] ?? '', ['ftp', 'ftps', 'sftp'], true) ? $in['ftp_scheme'] : 'ftp',
-            'schedule'           => in_array($in['schedule'] ?? '', ['sm_every_15min', 'sm_hourly', 'sm_twice_daily'], true) ? $in['schedule'] : 'sm_hourly',
+            'schedule'           => in_array($in['schedule'] ?? '', ['sm_every_15min', 'sm_hourly', 'sm_twice_daily', 'sm_daily'], true) ? $in['schedule'] : 'sm_hourly',
             'schedule_enabled'   => !empty($in['schedule_enabled']),
             'min_ratio'          => max(0, min(1, (float) ($in['min_ratio'] ?? 0.5))),
             'max_draft_ratio'    => max(0, min(1, (float) ($in['max_draft_ratio'] ?? 0.30))),
@@ -232,9 +234,20 @@ final class SM_Import_Admin {
                     <tr><td><strong>Photos awaiting import</strong></td><td><?php echo (int) $queued; ?> vehicle<?php echo $queued === 1 ? '' : 's'; ?></td></tr>
                     <tr><td><strong>Import lock</strong></td><td><?php echo SM_Import_Runner::is_locked() ? 'Held — a run is in progress' : 'Free'; ?></td></tr>
                     <tr><td><strong>Feed source</strong></td><td><?php
-                        echo SM_Import_Settings::get('ftp_host')
-                            ? esc_html(SM_Import_Settings::get('ftp_scheme') . '://' . SM_Import_Settings::get('ftp_host') . SM_Import_Settings::get('ftp_path'))
-                            : ($fixture ? 'Local fixture: <code>' . esc_html(basename($fixture)) . '</code>' : '<em>Not configured</em>');
+                        if (SM_Import_Local::configured()) {
+                            $dir = SM_Import_Local::dir();
+                            printf(
+                                'Drop folder: <code>%s</code>%s',
+                                esc_html(SM_Import_Local::path()),
+                                is_wp_error($dir) ? ' — <strong>' . esc_html($dir->get_error_message()) . '</strong>' : ''
+                            );
+                        } elseif (SM_Import_Settings::get('ftp_host')) {
+                            echo esc_html(SM_Import_Settings::get('ftp_scheme') . '://' . SM_Import_Settings::get('ftp_host') . SM_Import_Settings::get('ftp_path'));
+                        } elseif ($fixture) {
+                            echo 'Local fixture: <code>' . esc_html(basename($fixture)) . '</code>';
+                        } else {
+                            echo '<em>Not configured</em>';
+                        }
                     ?></td></tr>
                 </tbody>
             </table>
@@ -312,7 +325,27 @@ final class SM_Import_Admin {
                 <?php wp_nonce_field('sm_vehicle_import_save'); ?>
                 <input type="hidden" name="action" value="sm_vehicle_import_save" />
                 <table class="form-table" role="presentation">
-                    <tr><th colspan="2"><h3 style="margin:0">Connection</h3></th></tr>
+                    <tr><th colspan="2"><h3 style="margin:0">Feed source</h3></th></tr>
+                    <?php self::field('local_path', 'Drop folder', 'text'); ?>
+                    <tr>
+                        <th scope="row">Readiness</th>
+                        <td>
+                            <label><input type="checkbox" name="require_sentinel" value="1" <?php checked(SM_Import_Settings::get('require_sentinel')); ?> /> Wait for an <code>END.XML</code> file beside the archive</label>
+                            <p class="description">
+                                The vendor's documented contract: <code>END.XML</code> is written last, so its presence means the upload finished.
+                                Untick only if the provider does not send one — the importer then waits for the archive to stop changing instead,
+                                and reconciliation falls back to the <code>END.XML</code> inside the ZIP.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2"><p class="description">
+                            With a drop folder set, the FTP settings below are ignored — the package is read straight off disk.
+                            Leave it empty to pull the feed from a remote FTP server instead.
+                        </p></td>
+                    </tr>
+
+                    <tr><th colspan="2"><h3 style="margin:0">FTP (only when there is no drop folder)</h3></th></tr>
                     <?php
                     self::field('ftp_host', 'FTP host', 'text');
                     self::field('ftp_user', 'Username', 'text');
@@ -338,7 +371,7 @@ final class SM_Import_Admin {
                         <td>
                             <label><input type="checkbox" name="schedule_enabled" value="1" <?php checked(SM_Import_Settings::get('schedule_enabled')); ?> /> Check the server on a schedule</label><br />
                             <select name="schedule">
-                                <?php foreach (['sm_every_15min' => 'Every 15 minutes', 'sm_hourly' => 'Hourly', 'sm_twice_daily' => 'Twice daily'] as $value => $label) : ?>
+                                <?php foreach (['sm_every_15min' => 'Every 15 minutes', 'sm_hourly' => 'Hourly', 'sm_twice_daily' => 'Twice daily', 'sm_daily' => 'Daily at 5am'] as $value => $label) : ?>
                                     <option value="<?php echo esc_attr($value); ?>" <?php selected(SM_Import_Settings::get('schedule'), $value); ?>><?php echo esc_html($label); ?></option>
                                 <?php endforeach; ?>
                             </select>

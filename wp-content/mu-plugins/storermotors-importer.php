@@ -21,6 +21,7 @@ foreach ([
     'class-sm-import-vehicles.php',
     'class-sm-import-media.php',
     'class-sm-import-ftp.php',
+    'class-sm-import-local.php',
     'class-sm-import-runner.php',
     'class-sm-import-admin.php',
 ] as $sm_import_file) {

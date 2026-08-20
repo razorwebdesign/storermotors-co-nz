@@ -17,6 +17,9 @@ final class SM_Import_Runner {
     const FINGERPRINT_OPTION = 'sm_vehicle_import_last_fingerprint';
     const LOCK_TIMEOUT       = 1800; // 30 minutes
 
+    /** Local hour a daily schedule fires at. */
+    const DAILY_HOUR = 5;
+
     const HOOK_CHECK  = 'sm_vehicle_import_check';
     const HOOK_IMAGES = 'sm_vehicle_import_process_images';
     const HOOK_GC     = 'sm_vehicle_import_gc';
@@ -34,6 +37,7 @@ final class SM_Import_Runner {
         $schedules['sm_every_15min'] = ['interval' => 900,   'display' => 'Every 15 minutes (Storer feed)'];
         $schedules['sm_hourly']      = ['interval' => 3600,  'display' => 'Hourly (Storer feed)'];
         $schedules['sm_twice_daily'] = ['interval' => 43200, 'display' => 'Twice daily (Storer feed)'];
+        $schedules['sm_daily']       = ['interval' => 86400, 'display' => 'Daily (Storer feed)'];
         return $schedules;
     }
 
@@ -51,7 +55,10 @@ final class SM_Import_Runner {
                 $next = false;
             }
             if (!$next) {
-                wp_schedule_event(time() + 300, $schedule, self::HOOK_CHECK);
+                // Interval schedules start shortly; a daily schedule waits for
+                // its hour so the first run is not at an arbitrary time of day.
+                $start = ($schedule === 'sm_daily') ? self::next_daily_run() : time() + 300;
+                wp_schedule_event($start, $schedule, self::HOOK_CHECK);
             }
         }
 
@@ -60,11 +67,36 @@ final class SM_Import_Runner {
         }
     }
 
+    /**
+     * Next DAILY_HOUR o'clock in the site's timezone, as a UTC timestamp.
+     *
+     * Anchoring on local time rather than UTC keeps the run at 5am through a
+     * daylight-saving change.
+     */
+    private static function next_daily_run() {
+        $tz     = wp_timezone();
+        $now    = new DateTimeImmutable('now', $tz);
+        $target = $now->setTime(self::DAILY_HOUR, 0, 0);
+
+        if ($target <= $now) {
+            $target = $target->modify('+1 day');
+        }
+
+        return $target->getTimestamp();
+    }
+
     // ─── Entry points ────────────────────────────────────────────────────────
 
     /** Cron entry: pull from FTP if a new feed is waiting. */
     public static function run_scheduled() {
         self::run(['trigger' => 'cron']);
+
+        // A fixed 86400 interval drifts by an hour across a DST boundary, so
+        // the daily schedule re-anchors itself on DAILY_HOUR after every run.
+        if ((string) SM_Import_Settings::get('schedule') === 'sm_daily') {
+            wp_clear_scheduled_hook(self::HOOK_CHECK);
+            wp_schedule_event(self::next_daily_run(), 'sm_daily', self::HOOK_CHECK);
+        }
     }
 
     /** Cron entry: keep working the image queue until it drains. */
@@ -143,7 +175,11 @@ final class SM_Import_Runner {
         }
 
         if ($zip_path === '') {
-            $ready = SM_Import_FTP::poll($args['force']);
+            // A configured drop folder wins: reading the package off disk beats
+            // an FTP round trip to this same machine.
+            $ready = SM_Import_Local::configured()
+                ? SM_Import_Local::poll($args['force'])
+                : SM_Import_FTP::poll($args['force']);
             if (is_wp_error($ready)) {
                 return $ready;
             }

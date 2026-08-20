@@ -22,10 +22,17 @@ final class SM_Import_Settings {
         'ftp_pass'   => 'SM_FEED_FTP_PASS',
         'ftp_path'   => 'SM_FEED_FTP_PATH',
         'ftp_scheme' => 'SM_FEED_FTP_SCHEME',
+        'local_path' => 'SM_FEED_LOCAL_PATH',
     ];
 
     public static function defaults() {
         return [
+            // A drop folder on this server. Set, it wins over the FTP settings:
+            // the vendor uploads over their own FTP account and the importer
+            // reads the package straight off disk.
+            'local_path'          => '',
+            'require_sentinel'    => true,
+
             'ftp_host'            => '',
             'ftp_user'            => '',
             'ftp_pass'            => '',
@@ -130,7 +137,7 @@ final class SM_Import_Settings {
      * exist. Ignored the moment a host is set.
      */
     public static function fixture_path() {
-        if (self::get('ftp_host')) {
+        if (self::get('ftp_host') || self::get('local_path')) {
             return '';
         }
 

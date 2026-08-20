@@ -10,6 +10,13 @@
 # run it in this tree.)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Archives: never source, and they blow past GitHub's 100 MB file limit ───
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+
 # ── Secrets, credentials, database dumps ────────────────────────────────────
 wp-config.php
 credentials.txt
@@ -88,6 +95,5 @@ wp-content/mu-plugins/*.orig
 wp-content/mu-plugins/*-live.php
 wp-content/mu-plugins/*-copy.php
 
-# ── Reference material: keep the HTML build/checkpoint pages, drop binaries ─
-reference/*.zip
+# ── Reference material: keep the HTML build/checkpoint pages ────────────────
 reference/readme.html
