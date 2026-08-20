@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Storer Motors — storermotors.co.nz
+#
+# This repo tracks CUSTOM CODE ONLY. WordPress core, third-party plugins,
+# bundled themes, uploads and secrets are deliberately left out.
+#
+# Everything listed here is untracked, not deleted: git pull/push will never
+# remove these files from the working tree or from the live server.
+# (The one exception is `git clean -xdf`, which deletes ignored files — don't
+# run it in this tree.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets, credentials, database dumps ────────────────────────────────────
+wp-config.php
+credentials.txt
+*.sql
+*.sql.gz
+*.sql.zip
+*.pem
+*.key
+.env
+.env.*
+
+# ── OS / editor / IDE cruft ─────────────────────────────────────────────────
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── Local scratch ───────────────────────────────────────────────────────────
+Stitch/
+
+# ── WordPress core: root files ──────────────────────────────────────────────
+/index.php
+/wp-activate.php
+/wp-blog-header.php
+/wp-comments-post.php
+/wp-cron.php
+/wp-links-opml.php
+/wp-load.php
+/wp-login.php
+/wp-mail.php
+/wp-settings.php
+/wp-signup.php
+/wp-trackback.php
+/xmlrpc.php
+/license.txt
+/readme.html
+/wp-*.php.orig
+
+# ── WordPress core: directories ─────────────────────────────────────────────
+/wp-admin/
+/wp-includes/
+
+# ── wp-content: generated, third-party, or host-managed ─────────────────────
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/upgrade-temp-backup/
+wp-content/cache/
+wp-content/languages/
+wp-content/maintenance/
+wp-content/maintenance.php
+wp-content/debug.log
+wp-content/advanced-cache.php
+wp-content/object-cache.php
+wp-content/index.php
+
+# Third-party plugins. To track a plugin we author, un-ignore it, e.g.:
+#   !wp-content/plugins/storermotors-something/
+wp-content/plugins/
+!wp-content/plugins/index.php
+
+# Bundled/default themes. To track a custom or child theme, un-ignore it, e.g.:
+#   !wp-content/themes/storermotors/
+wp-content/themes/
+
+# ── Our own code: keep, minus stray backups ─────────────────────────────────
+# mu-plugins is the tracked surface. Copies pulled off the live host for
+# comparison (e.g. *.php1) stay local.
+wp-content/mu-plugins/*.php1
+wp-content/mu-plugins/*.bak
+wp-content/mu-plugins/*.orig
+wp-content/mu-plugins/*-live.php
+wp-content/mu-plugins/*-copy.php
+
+# ── Reference material: keep the HTML build/checkpoint pages, drop binaries ─
+reference/*.zip
+reference/readme.html
